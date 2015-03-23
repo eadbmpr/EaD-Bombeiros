@@ -121,6 +121,7 @@ $string['enrolmentduration'] = 'Enrolment duration';
 $string['enrolmentdurationlength'] = 'User must remain enrolled for';
 $string['err_noactivities'] = 'Completion information is not enabled for any activity, so none can be displayed. You can enable completion information by editing the settings for an activity.';
 $string['err_nocourses'] = 'Course completion is not enabled for any other courses, so none can be displayed. You can enable course completion in the course settings.';
+$string['err_nocriteria'] = 'This course doesn\'t have any completion criterion.';
 $string['err_nograde'] = 'A course pass grade has not been set for this course. To enable this criteria type you must create a pass grade for this course.';
 $string['err_noroles'] = 'There are no roles with the capability moodle/course:markcomplete in this course.';
 $string['err_nousers'] = 'There are no students on this course or group for whom completion information is displayed. (By default, completion information is displayed only for students, so if there are no students, you will see this error. Administrators can alter this option via the admin screens.)';
