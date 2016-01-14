@@ -447,4 +447,178 @@ class mod_quiz_external extends external_api {
         );
     }
 
+    /**
+     * Describes the parameters for get_access_information.
+     *
+     * @return external_external_function_parameters
+     * @since Moodle 3.1
+     */
+    public static function get_access_information_parameters() {
+        return new external_function_parameters (
+            array(
+                'quizid' => new external_value(PARAM_INT, 'quiz instance id'),
+                'attemptid' => new external_value(PARAM_INT, 'attempt id, 0 for the user last attempt if exists', VALUE_DEFAULT, 0),
+            )
+        );
+    }
+
+    /**
+     * Return access information for a given quiz.
+     *
+     * @param int $quizid quiz instance id
+     * @param int $attemptid attempt id, 0 for the user last attempt if exists
+     * @return array of warnings and the access information
+     * @since Moodle 3.1
+     * @throws  moodle_quiz_exception
+     */
+    public static function get_access_information($quizid, $attemptid = 0) {
+        global $DB, $USER, $CFG;
+
+        $warnings = array();
+
+        $params = array(
+            'quizid' => $quizid,
+            'attemptid' => $attemptid,
+        );
+        $params = self::validate_parameters(self::get_access_information_parameters(), $params);
+
+        // Request and permission validation.
+        $quiz = $DB->get_record('quiz', array('id' => $params['quizid']), '*', MUST_EXIST);
+        list($course, $cm) = get_course_and_cm_from_instance($quiz, 'quiz');
+
+        $context = context_module::instance($cm->id);
+        self::validate_context($context);
+
+        $attempttocheck = 0;
+        if (!empty($params['attemptid'])) {
+            $attemptobj = quiz_attempt::create($params['attemptid']);
+            if ($attemptobj->get_userid() != $USER->id) {
+                throw new moodle_quiz_exception($attemptobj->get_quizobj(), 'notyourattempt');
+            }
+            $attempttocheck = $attemptobj->get_attempt();
+        }
+
+        $result = array();
+
+        // Capabilities first.
+        $result['canattempt'] = has_capability('mod/quiz:attempt', $context);;
+        $result['canmanage'] = has_capability('mod/quiz:manage', $context);;
+        $result['canpreview'] = has_capability('mod/quiz:preview', $context);;
+        $result['canreviewmyattempts'] = has_capability('mod/quiz:reviewmyattempts', $context);;
+        $result['canviewreports'] = has_capability('mod/quiz:viewreports', $context);;
+
+        // Access manager now.
+        $quizobj = quiz::create($cm->instance, $USER->id);
+        $ignoretimelimits = has_capability('mod/quiz:ignoretimelimits', $context, null, false);
+        $timenow = time();
+        $accessmanager = new quiz_access_manager($quizobj, $timenow, $ignoretimelimits);
+
+        $attempts = quiz_get_user_attempts($quiz->id, $USER->id, 'finished', true);
+        $lastfinishedattempt = end($attempts);
+        if ($unfinishedattempt = quiz_get_user_attempt_unfinished($quiz->id, $USER->id)) {
+            $attempts[] = $unfinishedattempt;
+
+            // Check if the attempt is now overdue. In that case the state will change.
+            $quizobj->create_attempt_object($unfinishedattempt)->handle_if_time_expired(time(), false);
+
+            if ($unfinishedattempt->state != quiz_attempt::IN_PROGRESS and $unfinishedattempt->state != quiz_attempt::OVERDUE) {
+                $lastfinishedattempt = $unfinishedattempt;
+            }
+        }
+        $numattempts = count($attempts);
+
+        if (!$attempttocheck) {
+            $attempttocheck = $unfinishedattempt ? $unfinishedattempt : $lastfinishedattempt;
+        }
+
+        $result['isfinished'] = $accessmanager->is_finished($numattempts, $lastfinishedattempt);
+        $result['accessrules'] = $accessmanager->describe_rules();
+        $result['preventaccessreasons'] = $accessmanager->prevent_access();
+        $result['preventnewattemptreasons'] = $accessmanager->prevent_new_attempt($numattempts, $lastfinishedattempt);
+
+        if ($attempttocheck) {
+            $endtime = $accessmanager->get_end_time($attempttocheck);
+            $result['endtime'] = ($endtime === false) ? 0 : $endtime;
+            $result['ispreflightcheckrequired'] = $accessmanager->is_preflight_check_required($attempttocheck->id);
+        }
+
+        // Question types used.
+        $result['questiontypes'] = array();
+        $quizobj->preload_questions();
+        $quizobj->load_questions();
+        // To control if we need to look in categories for questions.
+        $qcategories = array();
+
+        // We must be careful with random questions, if we find a random question we must assume that the quiz may content
+        // any of the questions in the referenced category (or subcategories).
+        foreach ($quizobj->get_questions() as $questiondata) {
+            if ($questiondata->qtype == 'random') {
+                $includesubcategories = (bool) $questiondata->questiontext;
+                if (!isset($qcategories[$questiondata->category])) {
+                    $qcategories[$questiondata->category] = false;
+                }
+                if ($includesubcategories) {
+                    $qcategories[$questiondata->category] = true;
+                }
+            } else {
+                if (!in_array($questiondata->qtype, $result['questiontypes'])) {
+                    $result['questiontypes'][] = $questiondata->qtype;
+                }
+            }
+        }
+
+        if (!empty($qcategories)) {
+            require_once($CFG->libdir . '/questionlib.php');
+            // We have to look for all the question types in these categories.
+            $categoriestolook = array();
+            foreach ($qcategories as $cat => $includesubcats) {
+                if ($includesubcats) {
+                    $categoriestolook = array_merge($categoriestolook, question_categorylist($cat));
+                } else {
+                    $categoriestolook[] = $cat;
+                }
+            }
+            $result['questiontypes'] = array_merge($result['questiontypes'], question_get_qtypes_in_categories($categoriestolook));
+        }
+        $result['questiontypes'] = array_unique($result['questiontypes']);
+        asort($result['questiontypes']);
+
+        $result['warnings'] = $warnings;
+        return $result;
+    }
+
+    /**
+     * Describes the get_access_information return value.
+     *
+     * @return external_single_structure
+     * @since Moodle 3.1
+     */
+    public static function get_access_information_returns() {
+        return new external_single_structure(
+            array(
+                'canattempt' => new external_value(PARAM_BOOL, 'Whether the user can do the quiz or not.'),
+                'canmanage' => new external_value(PARAM_BOOL, 'Whether the user can edit the quiz settings or not.'),
+                'canpreview' => new external_value(PARAM_BOOL, 'Whether the user can preview the quiz or not.'),
+                'canreviewmyattempts' => new external_value(PARAM_BOOL, 'Whether the users can review their previous attempts
+                                                                or not.'),
+                'canviewreports' => new external_value(PARAM_BOOL, 'Whether the user can view the quiz reports or not.'),
+                'endtime' => new external_value(PARAM_INT, 'When the attempt must be submitted (determined by rules).',
+                                                VALUE_OPTIONAL),
+                'isfinished' => new external_value(PARAM_BOOL, 'Whether there is no way the user will ever be allowed to attempt.'),
+                'ispreflightcheckrequired' => new external_value(PARAM_BOOL, 'whether a check is required before the user
+                                                                    starts/continues his attempt.', VALUE_OPTIONAL),
+                'accessrules' => new external_multiple_structure(
+                                    new external_value(PARAM_TEXT, 'rule description'), 'list of rules'),
+                'preventaccessreasons' => new external_multiple_structure(
+                                            new external_value(PARAM_TEXT, 'access restriction description'), 'list of reasons'),
+                'preventnewattemptreasons' => new external_multiple_structure(
+                                                new external_value(PARAM_TEXT, 'access restriction description'),
+                                                                    'list of reasons'),
+                'questiontypes' => new external_multiple_structure(
+                                    new external_value(PARAM_PLUGIN, 'question type'), 'list of question types used in the quiz'),
+                'warnings' => new external_warnings(),
+            )
+        );
+    }
+
 }
