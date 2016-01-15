@@ -76,4 +76,12 @@ $functions = array(
         'type'          => 'read',
         'capabilities'  => 'mod/quiz:view'
     ),
+
+    'mod_quiz_start_attempt' => array(
+        'classname'     => 'mod_quiz_external',
+        'methodname'    => 'start_attempt',
+        'description'   => 'Starts a new attempt at a quiz.',
+        'type'          => 'write',
+        'capabilities'  => 'mod/quiz:attempt'
+    ),
 );
