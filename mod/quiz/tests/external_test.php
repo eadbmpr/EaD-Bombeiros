@@ -571,4 +571,54 @@ class mod_quiz_external_testcase extends externallib_advanced_testcase {
         $DB->delete_records('quiz_grades', array('id' => $grade->id));
 
     }
+    /**
+     * Test get_combined_review_options.
+     * This is a basic test, this is already tested in mod_quiz_display_options_testcase.
+     */
+    public function test_get_combined_review_options() {
+        global $DB;
+
+        $this->setUser($this->student);
+
+        $result = mod_quiz_external::get_combined_review_options($this->quiz->id);
+        $result = external_api::clean_returnvalue(mod_quiz_external::get_combined_review_options_returns(), $result);
+
+        // Expected default values.
+        $expected = array(
+            "someoptions" => array(
+                array("name" => "feedback", "value" => 0),
+                array("name" => "generalfeedback", "value" => 0),
+                array("name" => "rightanswer", "value" => 0),
+                array("name" => "overallfeedback", "value" => 0),
+                array("name" => "marks", "value" => 0),
+            ),
+            "alloptions" => array(
+                array("name" => "feedback", "value" => 1),
+                array("name" => "generalfeedback", "value" => 1),
+                array("name" => "rightanswer", "value" => 1),
+                array("name" => "overallfeedback", "value" => 1),
+                array("name" => "marks", "value" => 2),
+            ),
+            "warnings" => [],
+        );
+
+        $this->assertEquals($expected, $result);
+
+        // Teacher, for see student options.
+        $this->setUser($this->teacher);
+
+        $result = mod_quiz_external::get_combined_review_options($this->quiz->id, $this->student->id);
+        $result = external_api::clean_returnvalue(mod_quiz_external::get_combined_review_options_returns(), $result);
+
+        $this->assertEquals($expected, $result);
+
+        // Invalid user.
+        try {
+            mod_quiz_external::get_combined_review_options($this->quiz->id, -1);
+            $this->fail('Exception expected due to missing capability.');
+        } catch (dml_missing_record_exception $e) {
+            $this->assertEquals('invaliduser', $e->errorcode);
+        }
+    }
+
 }
