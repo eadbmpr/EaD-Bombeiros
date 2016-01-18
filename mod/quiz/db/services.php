@@ -84,4 +84,12 @@ $functions = array(
         'type'          => 'write',
         'capabilities'  => 'mod/quiz:attempt'
     ),
+
+    'mod_quiz_get_attempt_data' => array(
+        'classname'     => 'mod_quiz_external',
+        'methodname'    => 'get_attempt_data',
+        'description'   => 'Returns information for the given attempt page for a quiz attempt in progress.',
+        'type'          => 'read',
+        'capabilities'  => 'mod/quiz:attempt'
+    ),
 );

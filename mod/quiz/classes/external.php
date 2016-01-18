@@ -948,4 +948,226 @@ class mod_quiz_external extends external_api {
         );
     }
 
+    /**
+     * Utility function for validating a given attempt
+     *
+     * @param  array $params Array of parameters including the attemptid and preflight data
+     * @return  array containing the attempt object and access messages
+     * @throws moodle_quiz_exception
+     * @since  Moodle 3.1
+     */
+    protected static function validate_attempt($params) {
+        global $USER;
+
+        $attemptobj = quiz_attempt::create($params['attemptid']);
+
+        $context = context_module::instance($attemptobj->get_cm()->id);
+        self::validate_context($context);
+
+        // Check that this attempt belongs to this user.
+        if ($attemptobj->get_userid() != $USER->id) {
+            throw new moodle_quiz_exception($attemptobj->get_quizobj(), 'notyourattempt');
+        }
+
+        // General capabilities check.
+        $ispreviewuser = $attemptobj->is_preview_user();
+        if (!$ispreviewuser) {
+            $attemptobj->require_capability('mod/quiz:attempt');
+        }
+
+        // Attempt closed?.
+        if ($attemptobj->is_finished()) {
+            throw new moodle_quiz_exception($attemptobj->get_quizobj(), 'attemptalreadyclosed');
+        } else if ($attemptobj->get_state() == quiz_attempt::OVERDUE) {
+            throw new moodle_quiz_exception($attemptobj->get_quizobj(), 'stateoverdue');
+        }
+
+        // Check the access rules.
+        $accessmanager = $attemptobj->get_access_manager(time());
+
+        $messages = $accessmanager->prevent_access();
+        if (!$ispreviewuser && $messages) {
+            throw new moodle_quiz_exception($attemptobj->get_quizobj(), 'attempterror');
+        }
+
+        // User submitted data (like the quiz password).
+        if ($accessmanager->is_preflight_check_required($attemptobj->get_attemptid())) {
+            $provideddata = array();
+            foreach ($params['preflightdata'] as $data) {
+                $provideddata[$data['name']] = $data['value'];
+            }
+
+            $errors = $accessmanager->run_preflight_checks($provideddata, [], $params['attemptid']);
+            if (!empty($errors)) {
+                throw new moodle_quiz_exception($attemptobj->get_quizobj(), array_shift($errors));
+            }
+            // Pre-flight check passed.
+            $accessmanager->notify_preflight_check_passed($params['attemptid']);
+        }
+
+        // Check if the page is out of range.
+        if ($params['page'] != $attemptobj->force_page_number_into_range($params['page'])) {
+            throw new moodle_quiz_exception($attemptobj->get_quizobj(), 'invalidpagenumber');
+        }
+
+        // Prevent out of sequence access.
+        if ($attemptobj->get_currentpage() != $params['page']) {
+            if ($attemptobj->get_navigation_method() == QUIZ_NAVMETHOD_SEQ && $attemptobj->get_currentpage() > $params['page']) {
+                throw new moodle_quiz_exception('outofsequenceaccess');
+            }
+        }
+
+        // Check slots.
+        $slots = $attemptobj->get_slots($params['page']);
+
+        if (empty($slots)) {
+            throw new moodle_quiz_exception($attemptobj->get_quizobj(), 'noquestionsfound');
+        }
+
+        return array($attemptobj, $messages);
+    }
+
+    /**
+     * Describes a single question structure.
+     *
+     * @return external_single_structure the question structure
+     * @since  Moodle 3.1
+     */
+    private static function question_structure() {
+        return new external_single_structure(
+            array(
+                'slot' => new external_value(PARAM_INT, 'slot number'),
+                'number' => new external_value(PARAM_INT, 'question sequencial number'),
+                'name' => new external_value(PARAM_RAW, 'question name'),
+                'type' => new external_value(PARAM_PLUGIN, 'question type'),
+                'state' => new external_value(PARAM_ALPHA, 'the state id where the question is in'),
+                'status' => new external_value(PARAM_RAW, 'current status of the question'),
+                'flagged' => new external_value(PARAM_BOOL, 'whether the question is flagged or not'),
+                'page' => new external_value(PARAM_INT, 'page of the quiz this question appears on'),
+                'html' => new external_value(PARAM_RAW, 'the question rendered'),
+                'mark' => new external_value(PARAM_RAW, 'the mark awarded', VALUE_OPTIONAL),
+            )
+        );
+    }
+
+    /**
+     * Return questions information for a given attempt.
+     *
+     * @param  quiz_attempt  $attemptobj  the quiz attempt object
+     * @param  bool  $review  whether if we are in review mode or not
+     * @param  mixed  $page  string 'all' or integer page number
+     * @param  bool $includemark  whether to include marks or not
+     * @return array array of questions including data
+     */
+    private static function get_attempt_questions_data(quiz_attempt $attemptobj, $review, $page = 'all', $includemark = false) {
+        global $PAGE;
+
+        $questions = array();
+        $contextid = $attemptobj->get_quizobj()->get_context()->id;
+        $displayoptions = $attemptobj->get_display_options(true);
+        $renderer = $PAGE->get_renderer('mod_quiz');
+
+        foreach ($attemptobj->get_slots($page) as $slot) {
+            $question = array(
+                'slot' => $slot,
+                'number' => $attemptobj->get_question_number($slot),
+                'name' => external_format_string($attemptobj->get_question_name($slot), $contextid),
+                'type' => $attemptobj->get_question_type_class_name($slot),
+                'state' => (string) $attemptobj->get_question_state($slot),
+                'status' => $attemptobj->get_question_status($slot, $displayoptions->correctness),
+                'flagged' => $attemptobj->is_question_flagged($slot),
+                'page' => $attemptobj->get_question_page($slot),
+                'html' => $attemptobj->render_question($slot, $review, $renderer)
+            );
+            if ($includemark) {
+                $question['mark'] = $attemptobj->get_question_mark($slot);
+            }
+
+            $questions[] = $question;
+        }
+        return $questions;
+    }
+
+    /**
+     * Describes the parameters for get_attempt_data.
+     *
+     * @return external_external_function_parameters
+     * @since Moodle 3.1
+     */
+    public static function get_attempt_data_parameters() {
+        return new external_function_parameters (
+            array(
+                'attemptid' => new external_value(PARAM_INT, 'attempt id'),
+                'page' => new external_value(PARAM_INT, 'page number'),
+                'preflightdata' => new external_multiple_structure(
+                    new external_single_structure(
+                        array(
+                            'name' => new external_value(PARAM_ALPHANUMEXT, 'data name'),
+                            'value' => new external_value(PARAM_RAW, 'data value'),
+                        )
+                    ), 'Preflight required data (like passwords)', VALUE_DEFAULT, array()
+                )
+            )
+        );
+    }
+
+    /**
+     * Returns information for the given attempt page for a quiz attempt in progress.
+     *
+     * @param int $attemptid attempt id
+     * @param int $page page number
+     * @param array $preflightdata preflight required data (like passwords)
+     * @return array of warnings and the attempt data, next page, message and questions
+     * @since Moodle 3.1
+     * @throws moodle_quiz_exceptions
+     */
+    public static function get_attempt_data($attemptid, $page, $preflightdata = array()) {
+
+        $warnings = array();
+
+        $params = array(
+            'attemptid' => $attemptid,
+            'page' => $page,
+            'preflightdata' => $preflightdata,
+        );
+        $params = self::validate_parameters(self::get_attempt_data_parameters(), $params);
+
+        list($attemptobj, $messages) = self::validate_attempt($params);
+
+        if ($attemptobj->is_last_page($params['page'])) {
+            $nextpage = -1;
+        } else {
+            $nextpage = $params['page'] + 1;
+        }
+
+        $result = array();
+        $result['attempt'] = $attemptobj->get_attempt();
+        $result['messages'] = $messages;
+        $result['nextpage'] = $nextpage;
+        $result['warnings'] = $warnings;
+        $result['questions'] = self::get_attempt_questions_data($attemptobj, false, $params['page'], false);
+
+        return $result;
+    }
+
+    /**
+     * Describes the get_attempt_data return value.
+     *
+     * @return external_single_structure
+     * @since Moodle 3.1
+     */
+    public static function get_attempt_data_returns() {
+        return new external_single_structure(
+            array(
+                'attempt' => self::attempt_structure(),
+                'messages' => new external_multiple_structure(
+                    new external_value(PARAM_TEXT, 'access message'),
+                    'access messages'),
+                'nextpage' => new external_value(PARAM_INT, 'next page number'),
+                'questions' => new external_multiple_structure(self::question_structure()),
+                'warnings' => new external_warnings(),
+            )
+        );
+    }
+
 }
