@@ -92,4 +92,12 @@ $functions = array(
         'type'          => 'read',
         'capabilities'  => 'mod/quiz:attempt'
     ),
+
+    'mod_quiz_get_attempt_summary' => array(
+        'classname'     => 'mod_quiz_external',
+        'methodname'    => 'get_attempt_summary',
+        'description'   => 'Returns a summary of a quiz attempt before it is submitted.',
+        'type'          => 'read',
+        'capabilities'  => 'mod/quiz:attempt'
+    ),
 );
