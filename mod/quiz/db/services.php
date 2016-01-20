@@ -100,4 +100,13 @@ $functions = array(
         'type'          => 'read',
         'capabilities'  => 'mod/quiz:attempt'
     ),
+
+    'mod_quiz_save_attempt' => array(
+        'classname'     => 'mod_quiz_external',
+        'methodname'    => 'save_attempt',
+        'description'   => 'Processes save requests during the quiz.
+                            This function is intended for the quiz auto-save feature.',
+        'type'          => 'write',
+        'capabilities'  => 'mod/quiz:attempt'
+    ),
 );
