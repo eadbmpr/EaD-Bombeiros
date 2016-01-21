@@ -109,4 +109,12 @@ $functions = array(
         'type'          => 'write',
         'capabilities'  => 'mod/quiz:attempt'
     ),
+
+    'mod_quiz_process_attempt' => array(
+        'classname'     => 'mod_quiz_external',
+        'methodname'    => 'process_attempt',
+        'description'   => 'Process responses during an attempt at a quiz and also deals with attempts finishing.',
+        'type'          => 'write',
+        'capabilities'  => 'mod/quiz:attempt'
+    ),
 );
