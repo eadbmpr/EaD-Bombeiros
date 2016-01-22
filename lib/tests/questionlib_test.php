@@ -399,4 +399,34 @@ class core_questionlib_testcase extends advanced_testcase {
         $criteria = array('category' => $qcat->id);
         $this->assertEquals(0, $DB->count_records('question', $criteria));
     }
+
+    /**
+     * This function tests the question_get_qtypes_in_categories function.
+     */
+    public function test_question_get_qtypes_in_categories() {
+        $this->resetAfterTest(true);
+        $this->setAdminUser();
+
+        // Create course category.
+        $category = $this->getDataGenerator()->create_category();
+        $course = $this->getDataGenerator()->create_course();
+
+        $categorycontext = context_coursecat::instance($category->id);
+        $coursecontext = context_course::instance($course->id);
+
+        $qgen = $this->getDataGenerator()->get_plugin_generator('core_question');
+        $qcatcat = $qgen->create_question_category(array('contextid' => $categorycontext->id));
+        $qcatsubcat = $qgen->create_question_category(array('contextid' => $categorycontext->id, 'parent' => $qcatcat->id));
+        $qcoursecat = $qgen->create_question_category(array('contextid' => $coursecontext->id));
+
+        $qgen->create_question('essay', null, array('category' => $qcatcat->id));
+        $qgen->create_question('essay', null, array('category' => $qcatcat->id));
+        $qgen->create_question('shortanswer', null, array('category' => $qcatsubcat->id));
+        $qgen->create_question('numerical', null, array('category' => $qcoursecat->id));
+
+        $qtypes = question_get_qtypes_in_categories(array($qcatcat->id, $qcatsubcat->id, $qcoursecat->id));
+        asort($qtypes);
+        $this->assertEquals(array('essay', 'numerical', 'shortanswer'), $qtypes);
+
+    }
 }

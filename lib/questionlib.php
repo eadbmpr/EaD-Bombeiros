@@ -1932,3 +1932,22 @@ function question_module_uses_questions($modname) {
 
     return false;
 }
+
+/**
+ * Return a list of the different question types present in the given categories.
+ *
+ * @param  array $categories a list of category ids
+ * @return array the list of question types in the categories
+ * @since  Moodle 3.1
+ */
+function question_get_qtypes_in_categories($categories) {
+    global $DB;
+
+    list($categorysql, $params) = $DB->get_in_or_equal($categories);
+    $sql = "SELECT DISTINCT q.qtype
+            FROM {question} q
+            WHERE q.category $categorysql";
+
+    $qtypes = $DB->get_fieldset_sql($sql, $params);
+    return $qtypes;
+}
