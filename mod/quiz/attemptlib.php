@@ -1233,6 +1233,17 @@ class quiz_attempt {
     }
 
     /**
+     * Return the question type class name for a given slot within the current attempt.
+     *
+     * @param int $slot the number used to identify this question within this attempt.
+     * @return string the question type class name
+     * @since  Moodle 3.1
+     */
+    public function get_question_type_class_name($slot) {
+        return get_class($this->quba->get_question($slot)->qtype);
+    }
+
+    /**
      * Get the time remaining for an in-progress attempt, if the time is short
      * enought that it would be worth showing a timer.
      * @param int $timenow the time to consider as 'now'.
