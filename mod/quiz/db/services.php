@@ -125,4 +125,12 @@ $functions = array(
         'type'          => 'read',
         'capabilities'  => 'mod/quiz:reviewmyattempts'
     ),
+
+    'mod_quiz_view_attempt' => array(
+        'classname'     => 'mod_quiz_external',
+        'methodname'    => 'view_attempt',
+        'description'   => 'Trigger the attempt viewed event.',
+        'type'          => 'write',
+        'capabilities'  => 'mod/quiz:attempt'
+    ),
 );
