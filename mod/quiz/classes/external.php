@@ -766,7 +766,7 @@ class mod_quiz_external extends external_api {
             require_capability('mod/quiz:viewreports', $context);
         }
 
-        $attempts = quiz_get_user_attempts($quiz->id, $user->id, 'all');
+        $attempts = quiz_get_user_attempts($quiz->id, $user->id, 'all', true);
 
         $result = array();
         $result['someoptions'] = [];
